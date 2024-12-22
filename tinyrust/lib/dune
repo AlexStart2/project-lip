@@ -1,2 +1,9 @@
 (library
- (name tinyrust))
+ (name tinyrustLib)
+ (modules ast lexer parser interpreter)
+ (libraries menhirLib))
+
+(menhir
+ (modules parser))
+
+(ocamllex lexer)
