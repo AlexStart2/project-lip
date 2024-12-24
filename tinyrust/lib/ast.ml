@@ -1,23 +1,48 @@
-(* Token definitions *)
-type token =
-  | Keyword of string
-  | Identifier of string
-  | IntLiteral of int
-  | StringLiteral of string
-  | Operator of string
-  | Delimiter of char
-  | Comment
-  | EOF
+(* Tokens are already defined in lexer.mll and parser.mly *)
+type identifier = string
 
-(* Abstract Syntax Tree (AST) will be defined later as we build the parser *)
+(* Expressions *)
+type expr =
+  | Int of int
+  | String of string
+  | Var of identifier
+  | FunctionCall of string * expr list  (* e.g., println!("text") *)
+  | MethodCall of expr * string * expr list
+  | BinaryOp of string * expr * expr  (* e.g., x + y *)
+  | UnaryOp of string * expr          (* e.g., -x *)
+  | Array of expr list
 
-let to_string = function
-  | Keyword s -> Printf.sprintf "Keyword(%s)" s
-  | Identifier s -> Printf.sprintf "Identifier(%s)" s
-  | IntLiteral i -> Printf.sprintf "IntLiteral(%d)" i 
-  | StringLiteral s -> Printf.sprintf "StringLiteral(%s)" s
-  | Operator s -> Printf.sprintf "Operator(%s)" s
-  | Delimiter c -> Printf.sprintf "Delimiter(%c)" c
-  | Comment -> "Comment"
-  | EOF -> "EOF"
-  
+(* Statements *)
+type stmt =
+  | Let of identifier * expr * bool  (* bool indicates mutability *)
+  | Assign of identifier * expr       (* x = 42; *)
+  | If of expr * block * block option (* if x { ... } else { ... } *)
+  | Loop of block                     (* loop { ... } *)
+  | Break                             (* break; *)
+  | Expr of expr                      (* Standalone expression *)
+
+(* Blocks *)
+and block = stmt list                 (* { stmt1; stmt2; ... } *)
+
+(* Functions *)
+type func = {
+  name : identifier;
+  params : identifier list;
+  body : block;
+}
+
+(* Program *)
+type program = func list
+
+
+type value =
+  | IntVal of int
+  | StringVal of string
+  | ArrayVal of value list
+  | UnitVal
+
+type variable =
+  | Immutable of value
+  | Mutable of value ref
+
+type env = (string, variable) Hashtbl.t

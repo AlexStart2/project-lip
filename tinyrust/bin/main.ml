@@ -1,33 +1,65 @@
-open TinyrustLib.Lexer
-open TinyrustLib.Ast
-open Lexing
+(* open TinyrustLib.Lexer
+open TinyrustLib.Parser
 
+let parse input =
+  let lexbuf = Lexing.from_string input in
+  try
+    program tokenize lexbuf
+  with
+  | Error -> failwith "Syntax error"
+
+let print_tokens input =
+  let lexbuf = Lexing.from_string input in
+  let rec aux () =
+    match tokenize lexbuf with
+    | EOF -> print_endline "EOF"
+    | token ->
+        print_endline (token_to_string token);
+        aux ()
+  in
+  aux ()
 
 let () =
-  (* Example input to test the lexer *)
   let input = {|
-    let x = 42;
-    fn main() {
-      let y = "Hello, world!";
-      if x == 42 {
-        loop {
-          break;
-        }
-      }
-    }
+      fn main() {
+  let mut x = String::from("Ciao");
+  x.push_str(", mondo");
+  println!("x is: {x}");
+}
+
   |} in
 
-  (* Create a lexing buffer from the input string *)
-  let lexbuf = from_string input in
+  (* Step 1: Print tokens *)
+  print_endline "Tokens:";
+  print_tokens input;
 
-  (* Helper function to process and print tokens *)
-  let rec process_tokens lexbuf =
-    match tokenize lexbuf with
-    | EOF -> print_endline (to_string EOF)  (* Print EOF and stop *)
-    | token ->
-        let token_str = TinyrustLib.Lexer.token_to_string token in
-        print_endline token_str;           (* Print the token *)
-        process_tokens lexbuf              (* Continue processing *)
+  (* Step 2: Parse the program *)
+  print_endline "\nParsing program:";
+  let _ = parse input in
+  print_endline "Program parsed successfully!" *)
 
-  (* Process tokens from the lexing buffer *)
-  in process_tokens lexbuf
+open TinyrustLib.Lexer
+open TinyrustLib.Parser
+open TinyrustLib.Interpreter
+
+let parse input =
+  let lexbuf = Lexing.from_string input in
+  try
+    program tokenize lexbuf
+  with
+  | Error -> failwith "Syntax error"
+
+let () =
+  let input = {|
+      fn main() {
+      let x = 42;
+      let y = 42;
+      if x == y {
+        println!("x is equal to y");
+      }
+        println!("Hello, world!");
+      }
+  |} in
+  let ast = parse input in
+  print_endline "Program parsed successfully!";
+  exec_program ast
