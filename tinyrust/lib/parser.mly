@@ -73,12 +73,15 @@ expr_list:
   | /* empty */ { [] }
 
 expr:
-  | IDENTIFIER DOUBLECOLON IDENTIFIER LPAREN expr_list RPAREN {
-      FunctionCall ($1 ^ "::" ^ $3, $5)  (* Handle String::from *)
+| IDENTIFIER DOUBLECOLON IDENTIFIER LPAREN expr_list RPAREN {
+    NamespaceCall ($1, $3, $5)  (* Handle String::from *)
+  }
+  | IDENTIFIER LPAREN expr_list RPAREN {
+      FunctionCall ($1, $3)  (* Handle println!(...) *)
     }
   | IDENTIFIER LPAREN expr_list RPAREN { FunctionCall ($1, $3) }
   | expr DOT IDENTIFIER LPAREN expr_list RPAREN {
-      MethodCall ($1, $3, $5)  (* Handle x.push_str(...) *)
+      MethodCall ($1, $3, $5)  (* Handle a.push_str(...) *)
     }
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }

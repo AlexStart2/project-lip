@@ -8,6 +8,7 @@ type expr =
   | Var of identifier
   | FunctionCall of string * expr list  (* e.g., println!("text") *)
   | MethodCall of expr * string * expr list
+  | NamespaceCall of string * string * expr list
   | BinaryOp of string * expr * expr  (* e.g., x + y *)
   | UnaryOp of string * expr          (* e.g., -x *)
   | Array of expr list

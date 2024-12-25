@@ -51,14 +51,12 @@ let parse input =
 
 let () =
   let input = {|
-      fn main() {
-      let x = 42;
-      let y = 42;
-      if x == y {
-        println!("x is equal to y");
-      }
-        println!("Hello, world!");
-      }
+fn main() {
+    let x = 3; // variabile immutabile di tipo intero
+    let y = x + 1; // idem
+    println!("{x}"); // output: 3
+    println!("{y}"); // output: 4
+}
   |} in
   let ast = parse input in
   print_endline "Program parsed successfully!";

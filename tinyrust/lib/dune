@@ -1,7 +1,7 @@
 (library
  (name tinyrustLib)
  (modules ast lexer parser interpreter)
- (libraries menhirLib))
+ (libraries menhirLib str))
 
 (menhir
  (modules parser))
