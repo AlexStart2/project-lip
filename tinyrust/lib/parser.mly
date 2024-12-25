@@ -6,16 +6,33 @@ open Ast
 %token <string> IDENTIFIER
 %token <int> INT_LITERAL
 %token <string> STRING_LITERAL
+%type <Ast.program> program
+%type <Ast.func> function_def
+%type <Ast.stmt> stmt
+%type <Ast.expr> expr
+%type <Ast.expr list> expr_list
+%type <Ast.block> block
+%type <identifier list> non_empty_params
+%type <identifier list> params
+%type <Ast.block option> opt_else
+%type <Ast.stmt list> stmts
+// %type <Ast.expr> array
+%type <Ast.func list> functions
+
+
+
+
 
 %token EQEQ NEQ LEQ GEQ ANDAND OROR LSHIFT RSHIFT ARROW // FATARROW
 %token PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
 %token PLUS MINUS STAR SLASH PERCENT AMP BAR CARET BANG EQUAL
-%token LBRACE RBRACE LPAREN RPAREN LBRACKET RBRACKET SEMICOLON COMMA
-%token COLON DOT DOUBLECOLON
+%token LBRACE RBRACE LPAREN RPAREN SEMICOLON COMMA // LBRACKET RBRACKET
+%token DOT DOUBLECOLON //COLON
 %token EOF
 
 %start program
-%type <program> program
+
+
 
 %left OROR
 %left ANDAND
@@ -24,6 +41,11 @@ open Ast
 %left LSHIFT RSHIFT
 %left PLUS MINUS
 %left STAR SLASH PERCENT
+%nonassoc LEQ GEQ
+%right PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
+%right BANG
+%nonassoc DOT
+
 
 %%
 
@@ -43,12 +65,17 @@ function_def:
   }
 
 params:
-  | IDENTIFIER COMMA params { $1 :: $3 }
-  | IDENTIFIER { [$1] }
+  | non_empty_params { $1 }
   | /* empty */ { [] }
 
+non_empty_params:
+  | IDENTIFIER COMMA non_empty_params { $1 :: $3 }
+  | IDENTIFIER { [$1] }
+
+
 block:
-  | LBRACE stmts RBRACE { $2 }
+  | LBRACE stmts RBRACE { $2 }   (* Handle blocks with statements *)
+  | LBRACE RBRACE { [] }         (* Handle empty blocks *)
 
 stmts:
   | stmt stmts { $1 :: $2 }
@@ -62,6 +89,7 @@ stmt:
   | LOOP block { Loop ($2) }
   | BREAK SEMICOLON { Break }
   | expr SEMICOLON { Expr $1 }
+  | error { ErrorStmt }
 
 opt_else:
   | ELSE block { Some $2 }
@@ -73,16 +101,14 @@ expr_list:
   | /* empty */ { [] }
 
 expr:
-| IDENTIFIER DOUBLECOLON IDENTIFIER LPAREN expr_list RPAREN {
+  | IDENTIFIER LPAREN expr_list RPAREN { FunctionCall ($1, $3) }
+  | IDENTIFIER DOUBLECOLON IDENTIFIER LPAREN expr_list RPAREN {
     NamespaceCall ($1, $3, $5)  (* Handle String::from *)
   }
-  | IDENTIFIER LPAREN expr_list RPAREN {
-      FunctionCall ($1, $3)  (* Handle println!(...) *)
-    }
-  | IDENTIFIER LPAREN expr_list RPAREN { FunctionCall ($1, $3) }
   | expr DOT IDENTIFIER LPAREN expr_list RPAREN {
       MethodCall ($1, $3, $5)  (* Handle a.push_str(...) *)
     }
+
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }
   | IDENTIFIER { Var $1 }
@@ -114,6 +140,4 @@ expr:
   | expr XOREQ expr { BinaryOp ("^=", $1, $3) }
   | expr LSHIFTEQ expr { BinaryOp ("<<=", $1, $3) }
   | expr RSHIFTEQ expr { BinaryOp (">>=", $1, $3) }
-  | LBRACKET expr_list RBRACKET { Array ($2) }
-
-
+  | LBRACE expr_list RBRACE { Array $2 }

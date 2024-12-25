@@ -2,7 +2,7 @@
   open Parser
 }
 
-let white = [' ' '\t' '\n']+
+let white = [' ' '\t' '\n' '\r']+
 rule tokenize = parse
   | white { tokenize lexbuf }
   | "//" [^ '\n']* '\n' { tokenize lexbuf }
@@ -61,12 +61,12 @@ rule tokenize = parse
   | '}' { RBRACE }
   | '(' { LPAREN }
   | ')' { RPAREN }
-  | '[' { LBRACKET }
-  | ']' { RBRACKET }
+  (* | '[' { LBRACKET }
+  | ']' { RBRACKET } *)
   | ';' { SEMICOLON }
   | ',' { COMMA }
   | "::" { DOUBLECOLON }
-  | ":" { COLON }
+  (* | ":" { COLON } *)
   | "." { DOT }
   | eof { EOF }
   | _ { failwith ("Unrecognized token: '" ^ Lexing.lexeme lexbuf ^ "'") }
@@ -120,11 +120,11 @@ let token_to_string = function
     | RBRACE -> "Delim(})"
     | LPAREN -> "Delim(()"
     | RPAREN -> "Delim())"
-    | LBRACKET -> "Delim([)"
-    | RBRACKET -> "Delim(])"
+    (* | LBRACKET -> "Delim([)"
+    | RBRACKET -> "Delim(])" *)
     | SEMICOLON -> "Delim(;)"
     | COMMA -> "Delim(,)"
-    | COLON -> "Delim(:)"
+    (* | COLON -> "Delim(:)" *)
     | DOT -> "Delim(.)"
     | DOUBLECOLON -> "Delim(::)"
     | EOF -> "EOF"

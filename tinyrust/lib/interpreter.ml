@@ -1,35 +1,47 @@
 open Ast
 
-
 let built_in_functions = Hashtbl.create 16
 
-(* Initialize built-in functions *)
+(* Find a variable in the environment stack *)
+let rec find_in_env env name =
+  match env with
+  | [] -> failwith ("Variable " ^ name ^ " not found")
+  | scope :: rest ->
+      (* Only look in the current scope first *)
+      (match Hashtbl.find_opt scope name with
+      | Some v -> v
+      | None -> find_in_env rest name)
+      
 
-let initialize_builtins env =
-  (* Add println! function *)
-  Hashtbl.add built_in_functions "println!" (fun args ->
+
+(* Initialize built-in functions *)
+(* Update println! to accept the current environment *)
+let initialize_builtins _ =
+  Hashtbl.add built_in_functions "println!" (fun args env ->
       match args with
       | [StringVal s] -> 
-        (* Interpolate variables in the string *)
-        let interpolated = 
-          Str.global_substitute (Str.regexp "{[a-zA-Z_][a-zA-Z0-9_]*}")
-            (fun matched ->
-              let var_name = String.sub (Str.matched_string matched) 1 
-                             (String.length (Str.matched_string matched) - 2) in
-              match Hashtbl.find_opt env var_name with
-              | Some (Immutable (IntVal v)) -> string_of_int v
-              | Some (Immutable (StringVal v)) -> v
-              | Some (Mutable r) -> (
-                match !r with
-                | IntVal v -> string_of_int v
-                | StringVal v -> v
-                | _ -> failwith ("Unsupported type for variable: " ^ var_name)
-              )
-              | None -> failwith ("Variable " ^ var_name ^ " not found")
-              | _ -> failwith "Unsupported type"
-            ) 
-            s in print_endline interpolated; 
-        UnitVal
+          (* Interpolate variables in the string *)
+          let interpolated = 
+            Str.global_substitute (Str.regexp "{[a-zA-Z_][a-zA-Z0-9_]*}")
+              (fun matched ->
+                let var_name = String.sub (Str.matched_string matched) 1 
+                               (String.length (Str.matched_string matched) - 2) in
+                (* Use find_in_env to resolve variable *)
+                match find_in_env env var_name with
+                | Immutable (IntVal v) -> string_of_int v
+                | Immutable (StringVal v) -> v
+                | Mutable r -> (
+                    match !r with
+                    | IntVal v -> string_of_int v
+                    | StringVal v -> v
+                    | _ -> failwith ("Unsupported type for variable: " ^ var_name)
+                  )
+                | _ -> failwith ("Variable " ^ var_name ^ " not found")
+              ) 
+              s 
+          in
+          print_endline interpolated; 
+          UnitVal
       | _ -> failwith "println! expects a single string argument"
     )
 
@@ -69,11 +81,10 @@ let rec eval_expr (env : env) (expr : expr) : value =
   | Int n -> IntVal n
   | String s -> StringVal s
   | Var name -> (
-      match Hashtbl.find_opt env name with
-      | Some (Immutable v) -> v
-      | Some (Mutable v) -> !v
-      | None -> failwith ("Variable " ^ name ^ " not found")
-    )
+    match find_in_env env name with
+    | Immutable v -> v
+    | Mutable r -> !r
+  )
   | NamespaceCall (namespace, func_name, args) -> (
     let eval_args = List.map (eval_expr env) args in
     match (namespace, func_name) with
@@ -86,11 +97,12 @@ let rec eval_expr (env : env) (expr : expr) : value =
   )
   
   | FunctionCall (name, args) -> (
-      let eval_args = List.map (eval_expr env) args in
-      match Hashtbl.find_opt built_in_functions name with
-      | Some f -> f eval_args
-      | None -> failwith ("Undefined function: " ^ name)
-      )
+    let eval_args = List.map (eval_expr env) args in
+    match Hashtbl.find_opt built_in_functions name with
+    | Some f -> f eval_args env  (* Pass the environment *)
+    | None -> failwith ("Undefined function: " ^ name)
+  )
+
   | MethodCall (obj, method_name, args) -> (
     let obj_val = eval_expr env obj in
     let _ = List.map (eval_expr env) args in
@@ -100,10 +112,10 @@ let rec eval_expr (env : env) (expr : expr) : value =
         | [String suffix] -> (
             match obj with
             | Var var_name -> (
-                match Hashtbl.find_opt env var_name with
-                | Some (Mutable r) -> r := StringVal (s ^ suffix); UnitVal
-                | Some (Immutable _) -> failwith ("Variable " ^ var_name ^ " is immutable")
-                | None -> failwith ("Variable " ^ var_name ^ " not found")
+              match find_in_env env var_name with
+                | Mutable r -> r := StringVal (s ^ suffix); UnitVal
+                | Immutable _ -> failwith ("Variable " ^ var_name ^ " is immutable")
+                | exception Not_found -> failwith ("Variable " ^ var_name ^ " not found")              
               )
             | _ -> failwith "push_str must be called on a variable"
           )
@@ -128,22 +140,34 @@ let rec eval_expr (env : env) (expr : expr) : value =
 (* Define a custom exception for breaking out of loops *)
 exception BreakException
 
-(* Execute statements *)
 let rec exec_stmt (env : env) (stmt : stmt) : unit =
   match stmt with
   | Let (name, expr, is_mutable) ->
-      let value = eval_expr env expr in
-      if is_mutable then
-        Hashtbl.add env name (Mutable (ref value))
-      else
-        Hashtbl.add env name (Immutable value)
+    let value = eval_expr env expr in
+    let current_scope = List.hd env in
+    if Hashtbl.mem current_scope name then
+      match is_mutable with
+      | true -> Hashtbl.replace current_scope name (Mutable (ref value))
+      | false -> Hashtbl.replace current_scope name (Immutable value)
+    else if is_mutable then
+      Hashtbl.add current_scope name (Mutable (ref value))
+    else
+      Hashtbl.add current_scope name (Immutable value)
   | Assign (name, expr) ->
-      let value = eval_expr env expr in
-      if Hashtbl.mem env name then
-        match Hashtbl.find env name with
-        | Mutable r -> r := value
-        | Immutable _ -> failwith ("Variable " ^ name ^ " is immutable")
-      else failwith ("Variable " ^ name ^ " not found")
+    let value = eval_expr env expr in
+    let rec assign_in_env env name value =
+      match env with
+      | [] -> failwith ("Variable " ^ name ^ " not found")
+      | scope :: rest ->
+          if Hashtbl.mem scope name then
+            match Hashtbl.find scope name with
+            | Mutable r -> r := value
+            | Immutable _ -> failwith ("Variable " ^ name ^ " is immutable")
+          else
+            assign_in_env rest name value
+    in
+    assign_in_env env name value
+    
   | Expr expr -> ignore (eval_expr env expr)
   | If (cond, then_block, else_block) ->
       let cond_val = eval_expr env cond in
@@ -154,22 +178,32 @@ let rec exec_stmt (env : env) (stmt : stmt) : unit =
         | None -> ()
       )
   | Break -> raise BreakException
-  | Loop block ->
-      try while true do exec_block env block done with BreakException -> ()
+  | Loop block -> (
+      try
+        while true do exec_block env block done
+      with BreakException -> ()
+  )
+  | ErrorStmt -> failwith "Error statement"
 
 
-
-(* Execute blocks *)
 and exec_block (env : env) (block : block) : unit =
-  List.iter (exec_stmt env) block
+  (* Create a new scope for the block *)
+  let new_scope = Hashtbl.create 16 in
+  (* Extend the environment stack with the new scope *)
+  let extended_env = new_scope :: env in
+  (* Execute each statement in the block *)
+  List.iter (fun stmt -> exec_stmt extended_env stmt) block;
+  (* Remove the new scope when the block ends *)
+  ()
 
 (* Execute a program *)
 let exec_program (prog : program) : unit =
-  let env = Hashtbl.create 16 in
+  let env = [Hashtbl.create 16] in
   initialize_builtins env;
   let main_func =
     List.find_opt (fun f -> f.name = "main") prog
     |> Option.get
   in
   exec_block env main_func.body
+
 

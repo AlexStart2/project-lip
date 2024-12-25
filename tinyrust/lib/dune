@@ -1,5 +1,6 @@
 (library
  (name tinyrustLib)
+ (public_name tinyrust.lib)
  (modules ast lexer parser interpreter)
  (libraries menhirLib str))
 

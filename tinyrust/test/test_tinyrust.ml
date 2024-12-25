@@ -1,11 +1,14 @@
-open Tinyrust
+open TinyrustLib.Lexer
+open TinyrustLib.Parser
 
 (**
   The absolute path of the examples directory in your file system.
 
   To get this path, [cd] into the examples directory and run [pwd].
 *)
-let examples_dir = "/home/dalpi/tinyrust/test/examples/"
+let examples_dir = "/workspaces/project-lip/tinyrust/test/examples/"
+
+(* "/home/dalpi/tinyrust/test/examples/"*)
 
 let examples =
   let full_name name = examples_dir ^ name in
@@ -26,13 +29,24 @@ let pr = Printf.printf
     Start of parser tests
     ------------------------------------------ *)
 
+let parse input =
+  let lexbuf = Lexing.from_string input in
+  try
+    program tokenize lexbuf
+  with
+  | Error -> failwith "Syntax error"
+  | Failure msg -> failwith ("Parser failure: " ^ msg)
+    
+
 let%test_unit "test_parser" =
-  Array.iter
-    (fun ex ->
-      let p = read_file ex in
-      try
-        Parser.parse_string p |> ignore;
-        pr "✔ %s\n" ex
-      with _ ->
-        pr "✘ Couldn't parse %s\n" ex)
-    examples
+Array.iter
+  (fun ex ->
+    let p = read_file ex in
+    try
+      let _ = parse p in
+      pr "✔ Parse %s\n" ex
+    with Failure msg ->
+      pr "✘ Couldn't parse %s: %s\n" ex msg
+    | _ ->
+      pr "✘ Couldn't parse %s: Unknown error\n" ex)
+  examples

@@ -21,6 +21,7 @@ type stmt =
   | Loop of block                     (* loop { ... } *)
   | Break                             (* break; *)
   | Expr of expr                      (* Standalone expression *)
+  | ErrorStmt                         (* Error statement *)
 
 (* Blocks *)
 and block = stmt list                 (* { stmt1; stmt2; ... } *)
@@ -46,4 +47,4 @@ type variable =
   | Immutable of value
   | Mutable of value ref
 
-type env = (string, variable) Hashtbl.t
+type env = (string, variable) Hashtbl.t list
