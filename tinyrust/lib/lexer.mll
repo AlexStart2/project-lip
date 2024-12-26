@@ -47,6 +47,7 @@ rule tokenize = parse
 (* Single-character operators *)
   | '+' { PLUS }
   | '-' { MINUS }
+  | '-' + ['a'-'z' 'A'-'Z' '_']['a'-'z' 'A'-'Z' '0'-'9' '_' '!']* {UMINUS}
   | '*' { STAR }
   | '/' { SLASH }
   | '%' { PERCENT }
@@ -61,12 +62,12 @@ rule tokenize = parse
   | '}' { RBRACE }
   | '(' { LPAREN }
   | ')' { RPAREN }
-  (* | '[' { LBRACKET }
-  | ']' { RBRACKET } *)
+  | '[' { LBRACKET }
+  | ']' { RBRACKET }
   | ';' { SEMICOLON }
   | ',' { COMMA }
   | "::" { DOUBLECOLON }
-  (* | ":" { COLON } *)
+  | ":" { COLON }
   | "." { DOT }
   | eof { EOF }
   | _ { failwith ("Unrecognized token: '" ^ Lexing.lexeme lexbuf ^ "'") }
@@ -120,12 +121,13 @@ let token_to_string = function
     | RBRACE -> "Delim(})"
     | LPAREN -> "Delim(()"
     | RPAREN -> "Delim())"
-    (* | LBRACKET -> "Delim([)"
-    | RBRACKET -> "Delim(])" *)
+    | LBRACKET -> "Delim([)"
+    | RBRACKET -> "Delim(])"
     | SEMICOLON -> "Delim(;)"
     | COMMA -> "Delim(,)"
-    (* | COLON -> "Delim(:)" *)
+    | COLON -> "Delim(:)"
     | DOT -> "Delim(.)"
     | DOUBLECOLON -> "Delim(::)"
+    | UMINUS -> "UMINUS"
     | EOF -> "EOF"
 }

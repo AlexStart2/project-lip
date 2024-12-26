@@ -1,5 +1,8 @@
 open Ast
 
+(* Define a custom exception for breaking out of loops *)
+exception BreakException
+
 let built_in_functions = Hashtbl.create 16
 
 (* Find a variable in the environment stack *)
@@ -98,10 +101,24 @@ let rec eval_expr (env : env) (expr : expr) : value =
   
   | FunctionCall (name, args) -> (
     let eval_args = List.map (eval_expr env) args in
-    match Hashtbl.find_opt built_in_functions name with
-    | Some f -> f eval_args env  (* Pass the environment *)
-    | None -> failwith ("Undefined function: " ^ name)
+    match find_in_env env name with
+    | Immutable (FuncVal func) ->
+        (* Ensure the correct number of arguments are passed *)
+        if List.length func.params <> List.length eval_args then
+          failwith ("Incorrect number of arguments for function: " ^ name);
+        
+        (* Create a new scope for the function *)
+        let func_scope = Hashtbl.create 16 in
+        List.iter2
+          (fun (param_name, _param_type) arg_value ->
+            Hashtbl.add func_scope param_name (Immutable arg_value))
+          func.params eval_args;
+        
+        (* Execute the function body *)
+        exec_block (func_scope :: env) func.body
+    | _ -> failwith ("Undefined function: " ^ name)
   )
+
 
   | MethodCall (obj, method_name, args) -> (
     let obj_val = eval_expr env obj in
@@ -135,24 +152,21 @@ let rec eval_expr (env : env) (expr : expr) : value =
       let values = List.map (eval_expr env) elements in
       ArrayVal values
 
-      
-      
-(* Define a custom exception for breaking out of loops *)
-exception BreakException
 
-let rec exec_stmt (env : env) (stmt : stmt) : unit =
+and exec_stmt (env : env) (stmt : stmt) : value =
   match stmt with
   | Let (name, expr, is_mutable) ->
     let value = eval_expr env expr in
     let current_scope = List.hd env in
     if Hashtbl.mem current_scope name then
       match is_mutable with
-      | true -> Hashtbl.replace current_scope name (Mutable (ref value))
-      | false -> Hashtbl.replace current_scope name (Immutable value)
+      | true -> Hashtbl.replace current_scope name (Mutable (ref value)); UnitVal
+      | false -> Hashtbl.replace current_scope name (Immutable value); UnitVal
     else if is_mutable then
-      Hashtbl.add current_scope name (Mutable (ref value))
+      (Hashtbl.add current_scope name (Mutable (ref value)); UnitVal)
     else
-      Hashtbl.add current_scope name (Immutable value)
+      (Hashtbl.add current_scope name (Immutable value); UnitVal)
+      
   | Assign (name, expr) ->
     let value = eval_expr env expr in
     let rec assign_in_env env name value =
@@ -166,38 +180,44 @@ let rec exec_stmt (env : env) (stmt : stmt) : unit =
           else
             assign_in_env rest name value
     in
-    assign_in_env env name value
+    assign_in_env env name value; UnitVal
     
-  | Expr expr -> ignore (eval_expr env expr)
+  | Expr expr -> ignore (eval_expr env expr); UnitVal
   | If (cond, then_block, else_block) ->
       let cond_val = eval_expr env cond in
       if cond_val = IntVal 1 then exec_block env then_block
       else (
         match else_block with
         | Some block -> exec_block env block
-        | None -> ()
+        | None -> (); UnitVal
       )
   | Break -> raise BreakException
   | Loop block -> (
       try
-        while true do exec_block env block done
-      with BreakException -> ()
+        while true do ignore(exec_block env block) done
+      with BreakException -> (); UnitVal
   )
+  | ExprBlock block -> exec_block env block
+  | FuncDef func ->
+    let current_scope = List.hd env in
+    Hashtbl.add current_scope func.name (Immutable (FuncVal func)); UnitVal
   | ErrorStmt -> failwith "Error statement"
 
 
-and exec_block (env : env) (block : block) : unit =
-  (* Create a new scope for the block *)
+and exec_block (env : env) (block : block) : value =
   let new_scope = Hashtbl.create 16 in
   (* Extend the environment stack with the new scope *)
   let extended_env = new_scope :: env in
-  (* Execute each statement in the block *)
-  List.iter (fun stmt -> exec_stmt extended_env stmt) block;
-  (* Remove the new scope when the block ends *)
-  ()
+  match block with
+  | [] -> UnitVal  (* An empty block returns a unit value *)
+  | _ -> 
+      (* Execute all statements, return the result of the last one *)
+      List.fold_left
+        (fun _ stmt -> exec_stmt extended_env stmt)
+        UnitVal block
 
 (* Execute a program *)
-let exec_program (prog : program) : unit =
+let exec_program (prog : program) : value =
   let env = [Hashtbl.create 16] in
   initialize_builtins env;
   let main_func =

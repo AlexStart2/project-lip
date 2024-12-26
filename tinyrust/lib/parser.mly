@@ -2,86 +2,91 @@
 open Ast
 %}
 
-%token FN LET MUT IF ELSE LOOP BREAK
 %token <string> IDENTIFIER
 %token <int> INT_LITERAL
 %token <string> STRING_LITERAL
+
+%token FN LET LBRACE RBRACE EQUAL SEMICOLON EOF
+%token LPAREN RPAREN COMMA PLUS DOT DOUBLECOLON
+%token MINUS UMINUS STAR SLASH PERCENT AMP BAR CARET ANDAND OROR EQEQ NEQ LEQ GEQ BANG
+%token LBRACKET RBRACKET ANDEQ OREQ XOREQ LSHIFTEQ MODEQ PLUSEQ MINUSEQ MULTEQ DIVEQ
+%token LSHIFT RSHIFT RSHIFTEQ MUT IF ELSE LOOP BREAK ARROW COLON
+
+
+%nonassoc DOT                 (* Highest precedence for method calls and property access *)
+%left OROR                    (* Logical OR *)
+%left ANDAND                  (* Logical AND *)
+%left BAR                     (* Bitwise OR *)
+%left CARET                   (* Bitwise XOR *)
+%left AMP                     (* Bitwise AND *)
+%nonassoc EQEQ NEQ LEQ GEQ    (* Comparisons *)
+%left LSHIFT RSHIFT           (* Bitwise shifts << and >> *)
+%left PLUS MINUS              (* Addition and subtraction *)
+%left STAR SLASH PERCENT      (* Multiplication, division, and modulus *)
+%right BANG                   (* Logical NOT *)
+%right UMINUS                 (* Unary negation (e.g., -x) *)
+%right PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
+
+
+%type <(string * string) list> params
+%type <(string * string) list> non_empty_params
+
 %type <Ast.program> program
 %type <Ast.func> function_def
+%type <Ast.block> block
+%type <Ast.stmt list> stmts
 %type <Ast.stmt> stmt
+%type <Ast.func list> functions
 %type <Ast.expr> expr
 %type <Ast.expr list> expr_list
-%type <Ast.block> block
-%type <identifier list> non_empty_params
-%type <identifier list> params
 %type <Ast.block option> opt_else
-%type <Ast.stmt list> stmts
-// %type <Ast.expr> array
-%type <Ast.func list> functions
-
-
-
-
-
-%token EQEQ NEQ LEQ GEQ ANDAND OROR LSHIFT RSHIFT ARROW // FATARROW
-%token PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
-%token PLUS MINUS STAR SLASH PERCENT AMP BAR CARET BANG EQUAL
-%token LBRACE RBRACE LPAREN RPAREN SEMICOLON COMMA // LBRACKET RBRACKET
-%token DOT DOUBLECOLON //COLON
-%token EOF
 
 %start program
-
-
-
-%left OROR
-%left ANDAND
-%left BAR CARET AMP
-%left EQEQ NEQ
-%left LSHIFT RSHIFT
-%left PLUS MINUS
-%left STAR SLASH PERCENT
-%nonassoc LEQ GEQ
-%right PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
-%right BANG
-%nonassoc DOT
-
 
 %%
 
 program:
-  | functions EOF { $1 }
+  | functions EOF { print_endline "Parsed successfully!"; $1 }
 
 functions:
   | function_def functions { $1 :: $2 }
   | /* empty */ { [] }
 
+
 function_def:
   | FN IDENTIFIER LPAREN params RPAREN block {
-      { name = $2; params = $4; body = $6 }
+      { name = $2; params = $4; body = $6; return_type = None }
   }
   | FN IDENTIFIER LPAREN params RPAREN ARROW IDENTIFIER block {
-      { name = $2; params = $4; body = $8 }
+      { name = $2; params = $4; body = $8; return_type = Some $6 }
   }
+
 
 params:
   | non_empty_params { $1 }
   | /* empty */ { [] }
 
 non_empty_params:
-  | IDENTIFIER COMMA non_empty_params { $1 :: $3 }
-  | IDENTIFIER { [$1] }
+  | IDENTIFIER COLON IDENTIFIER COMMA non_empty_params {
+      ($1, $3) :: $5
+  }
+  | IDENTIFIER COLON IDENTIFIER {
+      [($1, $3)]
+  }
+
 
 
 block:
-  | LBRACE stmts RBRACE { $2 }   (* Handle blocks with statements *)
-  | LBRACE RBRACE { [] }         (* Handle empty blocks *)
+  | LBRACE stmts RBRACE { $2 }
+  | LBRACE RBRACE { [] }
+
 
 stmts:
+  | stmt { [$1] }
   | stmt stmts { $1 :: $2 }
-  | /* empty */ { [] }
 
 stmt:
+  | block { ExprBlock $1 }
   | LET IDENTIFIER EQUAL expr SEMICOLON { Let ($2, $4, false) }
   | LET MUT IDENTIFIER EQUAL expr SEMICOLON { Let ($3, $5, true) }
   | IDENTIFIER EQUAL expr SEMICOLON { Assign ($1, $3) }
@@ -89,7 +94,8 @@ stmt:
   | LOOP block { Loop ($2) }
   | BREAK SEMICOLON { Break }
   | expr SEMICOLON { Expr $1 }
-  | error { ErrorStmt }
+  | error { failwith "Syntax error in statement" }  (* Abort on error *)
+
 
 opt_else:
   | ELSE block { Some $2 }
@@ -107,13 +113,12 @@ expr:
   }
   | expr DOT IDENTIFIER LPAREN expr_list RPAREN {
       MethodCall ($1, $3, $5)  (* Handle a.push_str(...) *)
-    }
-
+  }
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }
   | IDENTIFIER { Var $1 }
   | BANG expr { UnaryOp ("!", $2) }
-  | MINUS expr %prec STAR { UnaryOp ("-", $2) }
+  | UMINUS expr { UnaryOp ("-", $2) }
   | expr PLUS expr { BinaryOp ("+", $1, $3) }
   | expr MINUS expr { BinaryOp ("-", $1, $3) }
   | expr STAR expr { BinaryOp ("*", $1, $3) }
@@ -140,4 +145,4 @@ expr:
   | expr XOREQ expr { BinaryOp ("^=", $1, $3) }
   | expr LSHIFTEQ expr { BinaryOp ("<<=", $1, $3) }
   | expr RSHIFTEQ expr { BinaryOp (">>=", $1, $3) }
-  | LBRACE expr_list RBRACE { Array $2 }
+  | LBRACKET expr_list RBRACKET { Array $2 }

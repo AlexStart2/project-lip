@@ -21,16 +21,19 @@ type stmt =
   | Loop of block                     (* loop { ... } *)
   | Break                             (* break; *)
   | Expr of expr                      (* Standalone expression *)
+  | ExprBlock of block
+  | FuncDef of func
   | ErrorStmt                         (* Error statement *)
 
 (* Blocks *)
 and block = stmt list                 (* { stmt1; stmt2; ... } *)
 
-(* Functions *)
-type func = {
+
+and func = {
   name : identifier;
-  params : identifier list;
+  params : (identifier * string) list; (* List of parameter names with types *)
   body : block;
+  return_type : string option; (* Optional return type *)
 }
 
 (* Program *)
@@ -42,6 +45,7 @@ type value =
   | StringVal of string
   | ArrayVal of value list
   | UnitVal
+  | FuncVal of func
 
 type variable =
   | Immutable of value
