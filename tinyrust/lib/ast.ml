@@ -22,7 +22,7 @@ type stmt =
   | Break                             (* break; *)
   | Expr of expr                      (* Standalone expression *)
   | ExprBlock of block
-  | FuncDef of func
+  | FunctionDef of func
   | ErrorStmt                         (* Error statement *)
 
 (* Blocks *)
@@ -37,13 +37,14 @@ and func = {
 }
 
 (* Program *)
-type program = func list
+type program = Program of stmt list
 
 
 type value =
   | IntVal of int
   | StringVal of string
   | ArrayVal of value list
+  | RefVal of value
   | UnitVal
   | FuncVal of func
 

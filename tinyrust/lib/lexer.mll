@@ -47,11 +47,11 @@ rule tokenize = parse
 (* Single-character operators *)
   | '+' { PLUS }
   | '-' { MINUS }
-  | '-' + ['a'-'z' 'A'-'Z' '_']['a'-'z' 'A'-'Z' '0'-'9' '_' '!']* {UMINUS}
   | '*' { STAR }
   | '/' { SLASH }
   | '%' { PERCENT }
   | '&' { AMP }
+  | '&' {REF}
   | '|' { BAR }
   | '^' { CARET }
   | '!' { BANG }
@@ -70,7 +70,7 @@ rule tokenize = parse
   | ":" { COLON }
   | "." { DOT }
   | eof { EOF }
-  | _ { failwith ("Unrecognized token: '" ^ Lexing.lexeme lexbuf ^ "'") }
+  | _ as c { Printf.printf "Unrecognized token: %c\n" c; failwith "Lexer error" }
 
 
 
@@ -129,5 +129,6 @@ let token_to_string = function
     | DOT -> "Delim(.)"
     | DOUBLECOLON -> "Delim(::)"
     | UMINUS -> "UMINUS"
+    | REF -> "REF"
     | EOF -> "EOF"
 }

@@ -10,7 +10,7 @@ open Ast
 %token LPAREN RPAREN COMMA PLUS DOT DOUBLECOLON
 %token MINUS UMINUS STAR SLASH PERCENT AMP BAR CARET ANDAND OROR EQEQ NEQ LEQ GEQ BANG
 %token LBRACKET RBRACKET ANDEQ OREQ XOREQ LSHIFTEQ MODEQ PLUSEQ MINUSEQ MULTEQ DIVEQ
-%token LSHIFT RSHIFT RSHIFTEQ MUT IF ELSE LOOP BREAK ARROW COLON
+%token LSHIFT RSHIFT RSHIFTEQ MUT IF ELSE LOOP BREAK ARROW COLON REF
 
 
 %nonassoc DOT                 (* Highest precedence for method calls and property access *)
@@ -21,10 +21,10 @@ open Ast
 %left AMP                     (* Bitwise AND *)
 %nonassoc EQEQ NEQ LEQ GEQ    (* Comparisons *)
 %left LSHIFT RSHIFT           (* Bitwise shifts << and >> *)
+%right UMINUS REF
 %left PLUS MINUS              (* Addition and subtraction *)
 %left STAR SLASH PERCENT      (* Multiplication, division, and modulus *)
-%right BANG                   (* Logical NOT *)
-%right UMINUS                 (* Unary negation (e.g., -x) *)
+%nonassoc BANG
 %right PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
 
 
@@ -32,11 +32,9 @@ open Ast
 %type <(string * string) list> non_empty_params
 
 %type <Ast.program> program
-%type <Ast.func> function_def
 %type <Ast.block> block
 %type <Ast.stmt list> stmts
 %type <Ast.stmt> stmt
-%type <Ast.func list> functions
 %type <Ast.expr> expr
 %type <Ast.expr list> expr_list
 %type <Ast.block option> opt_else
@@ -46,33 +44,15 @@ open Ast
 %%
 
 program:
-  | functions EOF { print_endline "Parsed successfully!"; $1 }
-
-functions:
-  | function_def functions { $1 :: $2 }
-  | /* empty */ { [] }
-
-
-function_def:
-  | FN IDENTIFIER LPAREN params RPAREN block {
-      { name = $2; params = $4; body = $6; return_type = None }
-  }
-  | FN IDENTIFIER LPAREN params RPAREN ARROW IDENTIFIER block {
-      { name = $2; params = $4; body = $8; return_type = Some $6 }
-  }
-
+  | stmts EOF { print_endline "Parsed program";Program $1 }
 
 params:
   | non_empty_params { $1 }
   | /* empty */ { [] }
 
 non_empty_params:
-  | IDENTIFIER COLON IDENTIFIER COMMA non_empty_params {
-      ($1, $3) :: $5
-  }
-  | IDENTIFIER COLON IDENTIFIER {
-      [($1, $3)]
-  }
+  | IDENTIFIER COLON IDENTIFIER COMMA non_empty_params { ($1, $3) :: $5 }
+  | IDENTIFIER COLON IDENTIFIER { [($1, $3)] }
 
 
 
@@ -86,14 +66,21 @@ stmts:
   | stmt stmts { $1 :: $2 }
 
 stmt:
-  | block { ExprBlock $1 }
   | LET IDENTIFIER EQUAL expr SEMICOLON { Let ($2, $4, false) }
+  | FN IDENTIFIER LPAREN params RPAREN block {
+      print_endline ("Parsed function: " ^ $2);FunctionDef { name = $2; params = $4; body = $6; return_type = None }
+  }
+  | FN IDENTIFIER LPAREN params RPAREN ARROW IDENTIFIER block {
+      print_endline ("Parsed function with return type: " ^ $2);FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
+  }
   | LET MUT IDENTIFIER EQUAL expr SEMICOLON { Let ($3, $5, true) }
   | IDENTIFIER EQUAL expr SEMICOLON { Assign ($1, $3) }
   | IF expr block opt_else { If ($2, $3, $4) }
   | LOOP block { Loop ($2) }
   | BREAK SEMICOLON { Break }
-  | expr SEMICOLON { Expr $1 }
+  | expr { Expr $1 }
+  | expr SEMICOLON { print_endline "Parsed expression statement"; Expr $1 }
+  | block { print_endline "Parsed block statement"; ExprBlock $1 }
   | error { failwith "Syntax error in statement" }  (* Abort on error *)
 
 
@@ -114,11 +101,12 @@ expr:
   | expr DOT IDENTIFIER LPAREN expr_list RPAREN {
       MethodCall ($1, $3, $5)  (* Handle a.push_str(...) *)
   }
+  | BANG expr { UnaryOp ("!", $2) }
+  | MINUS expr %prec UMINUS { UnaryOp ("-", $2) }
+  | REF expr %prec REF { UnaryOp ("&", $2) }
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }
   | IDENTIFIER { Var $1 }
-  | BANG expr { UnaryOp ("!", $2) }
-  | UMINUS expr { UnaryOp ("-", $2) }
   | expr PLUS expr { BinaryOp ("+", $1, $3) }
   | expr MINUS expr { BinaryOp ("-", $1, $3) }
   | expr STAR expr { BinaryOp ("*", $1, $3) }

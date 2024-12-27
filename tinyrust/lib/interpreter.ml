@@ -10,16 +10,27 @@ let rec find_in_env env name =
   match env with
   | [] -> failwith ("Variable " ^ name ^ " not found")
   | scope :: rest ->
-      (* Only look in the current scope first *)
-      (match Hashtbl.find_opt scope name with
-      | Some v -> v
-      | None -> find_in_env rest name)
-      
+      if Hashtbl.mem scope name then Hashtbl.find scope name
+      else find_in_env rest name
 
+
+let print_env env = (* print scopes sepparately *)
+  List.iter (fun scope -> 
+    Hashtbl.iter (fun key value -> Printf.printf "%s -> %s\n" key (match value with
+      | Immutable a -> (match a with 
+        | IntVal _ -> "IM Int"
+        | StringVal _ -> "IM String"
+        | ArrayVal _ -> "IM Array"
+        | UnitVal -> "IM Unit"
+        | RefVal _ -> "IM Ref"
+        | FuncVal f -> Printf.sprintf "IM Func %s %s"  f.name (Option.value ~default:"" f.return_type))
+      | Mutable _ -> "Mutable"
+    )) scope ; Printf.printf "----\n"
+  ) env
 
 (* Initialize built-in functions *)
 (* Update println! to accept the current environment *)
-let initialize_builtins _ =
+let initialize_builtins _ = 
   Hashtbl.add built_in_functions "println!" (fun args env ->
       match args with
       | [StringVal s] -> 
@@ -39,14 +50,17 @@ let initialize_builtins _ =
                     | StringVal v -> v
                     | _ -> failwith ("Unsupported type for variable: " ^ var_name)
                   )
-                | _ -> failwith ("Variable " ^ var_name ^ " not found")
+                | Immutable UnitVal  -> failwith ("Variable " ^ var_name ^ " is of type Unit")
+                | _ -> failwith ("Variable " ^ var_name ^ " not found 2")
               ) 
               s 
           in
           print_endline interpolated; 
-          UnitVal
+          UnitVal  (* Return UnitVal instead of nothing *)
       | _ -> failwith "println! expects a single string argument"
     )
+
+(* Evaluate expressions *)
 
 (* Helper function to evaluate binary operations *)
 let eval_binary_op op lhs rhs =
@@ -73,13 +87,43 @@ let eval_binary_op op lhs rhs =
 
 (* Helper function to evaluate unary operations *)
 let eval_unary_op op v =
+  print_endline ("Evaluating unary operation: " ^ op);
   match (op, v) with
   | ("!", IntVal n) -> IntVal (if n = 0 then 1 else 0)
   | ("-", IntVal n) -> IntVal (-n)
+  | ("&", _) -> RefVal v  (* Create a reference to the value *)
   | _ -> failwith ("Unsupported unary operation: " ^ op)
+
+
+
+
+let find_function_in_env env name =
+  try
+    match find_in_env env name with
+    | Immutable (FuncVal func) -> Some (FuncVal func)
+    | _ -> None
+  with 
+  | Failure _ -> None
+
+let find_function_in_build_in name args env =
+  match Hashtbl.find_opt built_in_functions name with
+  | Some f -> Some (f args env)
+  | None -> None
+
+let rec string_of_expr = function
+  | Int n -> string_of_int n
+  | String s -> s
+  | Var name -> name
+  | NamespaceCall (namespace, func_name, _) -> namespace ^ "::" ^ func_name
+  | FunctionCall (name, _) -> name
+  | MethodCall (_, method_name, _) -> method_name
+  | BinaryOp (op, _, _) -> op
+  | UnaryOp (op, _) -> op
+  | Array elements -> "[" ^ String.concat ", " (List.map string_of_expr elements) ^ "]"
 
 (* Evaluate expressions *)
 let rec eval_expr (env : env) (expr : expr) : value =
+  print_endline ("Evaluating expression: " ^ string_of_expr expr);
   match expr with
   | Int n -> IntVal n
   | String s -> StringVal s
@@ -101,24 +145,42 @@ let rec eval_expr (env : env) (expr : expr) : value =
   
   | FunctionCall (name, args) -> (
     let eval_args = List.map (eval_expr env) args in
-    match find_in_env env name with
-    | Immutable (FuncVal func) ->
-        (* Ensure the correct number of arguments are passed *)
-        if List.length func.params <> List.length eval_args then
-          failwith ("Incorrect number of arguments for function: " ^ name);
-        
-        (* Create a new scope for the function *)
-        let func_scope = Hashtbl.create 16 in
+    match find_function_in_env env name with
+    | Some (FuncVal func) -> (
+        let new_scope = Hashtbl.create 16 in
+        let extended_env = new_scope :: env in
         List.iter2
-          (fun (param_name, _param_type) arg_value ->
-            Hashtbl.add func_scope param_name (Immutable arg_value))
+          (fun (param_name, _) arg_val ->
+            Hashtbl.add new_scope param_name (Immutable arg_val))
           func.params eval_args;
-        
-        (* Execute the function body *)
-        exec_block (func_scope :: env) func.body
+        exec_block extended_env func.body
+      )
+    | None -> (
+        match find_function_in_build_in name eval_args env with
+        | Some f -> f
+        | None -> failwith ("Undefined function: " ^ name)
+      )
     | _ -> failwith ("Undefined function: " ^ name)
   )
 
+  (* | FunctionCall (name, args) ->
+    let func =
+      match find_in_env env name with
+      | Immutable (FuncVal f) -> f
+      | _ -> failwith ("Undefined function: " ^ name)
+    in
+    (* Create a new scope for the function *)
+    let func_env = Hashtbl.create 16 in
+    let new_env = func_env :: env in
+    (* Bind arguments to parameters *)
+    List.iter2
+      (fun (param_name, _) arg_expr ->
+        let value = eval_expr env arg_expr in
+        Hashtbl.add func_env param_name (Immutable value))
+      func.params args;
+    (* Execute the function body *)
+    exec_block new_env func.body
+ *)
 
   | MethodCall (obj, method_name, args) -> (
     let obj_val = eval_expr env obj in
@@ -146,6 +208,7 @@ let rec eval_expr (env : env) (expr : expr) : value =
       let rval = eval_expr env rhs in
       eval_binary_op op lval rval
   | UnaryOp (op, e) ->
+    print_endline ("Evaluating unary operation: " ^ op);
       let v = eval_expr env e in
       eval_unary_op op v
   | Array elements ->
@@ -182,7 +245,7 @@ and exec_stmt (env : env) (stmt : stmt) : value =
     in
     assign_in_env env name value; UnitVal
     
-  | Expr expr -> ignore (eval_expr env expr); UnitVal
+  | Expr expr -> eval_expr env expr
   | If (cond, then_block, else_block) ->
       let cond_val = eval_expr env cond in
       if cond_val = IntVal 1 then exec_block env then_block
@@ -198,11 +261,10 @@ and exec_stmt (env : env) (stmt : stmt) : value =
       with BreakException -> (); UnitVal
   )
   | ExprBlock block -> exec_block env block
-  | FuncDef func ->
+  | FunctionDef func ->
     let current_scope = List.hd env in
     Hashtbl.add current_scope func.name (Immutable (FuncVal func)); UnitVal
   | ErrorStmt -> failwith "Error statement"
-
 
 and exec_block (env : env) (block : block) : value =
   let new_scope = Hashtbl.create 16 in
@@ -216,14 +278,17 @@ and exec_block (env : env) (block : block) : value =
         (fun _ stmt -> exec_stmt extended_env stmt)
         UnitVal block
 
+
+
 (* Execute a program *)
-let exec_program (prog : program) : value =
+let exec_program (Program stmts : program) : value =
   let env = [Hashtbl.create 16] in
   initialize_builtins env;
-  let main_func =
-    List.find_opt (fun f -> f.name = "main") prog
-    |> Option.get
-  in
-  exec_block env main_func.body
+  (* Execute all top-level statements, including function definitions *)
+  List.iter (fun stmt -> ignore (exec_stmt env stmt)) stmts;
+  (* Find and execute the main function *)
+  match find_in_env env "main" with
+  | Immutable (FuncVal main_func) -> exec_block env main_func.body
+  | _ -> failwith "main function not defined or invalid"
 
 
