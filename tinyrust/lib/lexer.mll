@@ -51,7 +51,6 @@ rule tokenize = parse
   | '/' { SLASH }
   | '%' { PERCENT }
   | '&' { AMP }
-  | '&' {REF}
   | '|' { BAR }
   | '^' { CARET }
   | '!' { BANG }

@@ -34,6 +34,7 @@ let initialize_builtins _ =
   Hashtbl.add built_in_functions "println!" (fun args env ->
       match args with
       | [StringVal s] -> 
+        (* print_env env; *)
           (* Interpolate variables in the string *)
           let interpolated = 
             Str.global_substitute (Str.regexp "{[a-zA-Z_][a-zA-Z0-9_]*}")
@@ -44,6 +45,12 @@ let initialize_builtins _ =
                 match find_in_env env var_name with
                 | Immutable (IntVal v) -> string_of_int v
                 | Immutable (StringVal v) -> v
+                | Immutable (RefVal r) -> (
+                    match r with
+                    | IntVal v -> string_of_int v
+                    | StringVal v -> v
+                    | _ -> failwith ("Unsupported type for variable: " ^ var_name)
+                  )
                 | Mutable r -> (
                     match !r with
                     | IntVal v -> string_of_int v
@@ -87,7 +94,6 @@ let eval_binary_op op lhs rhs =
 
 (* Helper function to evaluate unary operations *)
 let eval_unary_op op v =
-  print_endline ("Evaluating unary operation: " ^ op);
   match (op, v) with
   | ("!", IntVal n) -> IntVal (if n = 0 then 1 else 0)
   | ("-", IntVal n) -> IntVal (-n)
@@ -123,7 +129,7 @@ let rec string_of_expr = function
 
 (* Evaluate expressions *)
 let rec eval_expr (env : env) (expr : expr) : value =
-  print_endline ("Evaluating expression: " ^ string_of_expr expr);
+  (* print_endline ("Evaluating expression: " ^ string_of_expr expr); *)
   match expr with
   | Int n -> IntVal n
   | String s -> StringVal s
@@ -186,13 +192,18 @@ let rec eval_expr (env : env) (expr : expr) : value =
     let obj_val = eval_expr env obj in
     let _ = List.map (eval_expr env) args in
     match (obj_val, method_name) with
-    | (StringVal s, "push_str") -> (
+    | (s, "push_str") -> (
+      let text = match s with
+        | StringVal s -> s
+        | RefVal (StringVal s) -> s
+        | _ -> failwith "push_str must be called on a string"
+      in
         match args with
         | [String suffix] -> (
             match obj with
             | Var var_name -> (
               match find_in_env env var_name with
-                | Mutable r -> r := StringVal (s ^ suffix); UnitVal
+                | Mutable r -> r := StringVal (text ^ suffix); UnitVal
                 | Immutable _ -> failwith ("Variable " ^ var_name ^ " is immutable")
                 | exception Not_found -> failwith ("Variable " ^ var_name ^ " not found")              
               )
@@ -208,7 +219,6 @@ let rec eval_expr (env : env) (expr : expr) : value =
       let rval = eval_expr env rhs in
       eval_binary_op op lval rval
   | UnaryOp (op, e) ->
-    print_endline ("Evaluating unary operation: " ^ op);
       let v = eval_expr env e in
       eval_unary_op op v
   | Array elements ->

@@ -44,7 +44,7 @@ open Ast
 %%
 
 program:
-  | stmts EOF { print_endline "Parsed program";Program $1 }
+  | stmts EOF { (*print_endline "Parsed program";*)Program $1 }
 
 params:
   | non_empty_params { $1 }
@@ -54,12 +54,9 @@ non_empty_params:
   | IDENTIFIER COLON IDENTIFIER COMMA non_empty_params { ($1, $3) :: $5 }
   | IDENTIFIER COLON IDENTIFIER { [($1, $3)] }
 
-
-
 block:
   | LBRACE stmts RBRACE { $2 }
   | LBRACE RBRACE { [] }
-
 
 stmts:
   | stmt { [$1] }
@@ -68,21 +65,20 @@ stmts:
 stmt:
   | LET IDENTIFIER EQUAL expr SEMICOLON { Let ($2, $4, false) }
   | FN IDENTIFIER LPAREN params RPAREN block {
-      print_endline ("Parsed function: " ^ $2);FunctionDef { name = $2; params = $4; body = $6; return_type = None }
+      (*print_endline ("Parsed function: " ^ $2);*)FunctionDef { name = $2; params = $4; body = $6; return_type = None }
   }
   | FN IDENTIFIER LPAREN params RPAREN ARROW IDENTIFIER block {
-      print_endline ("Parsed function with return type: " ^ $2);FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
+      (*print_endline ("Parsed function with return type: " ^ $2);*)FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
   }
   | LET MUT IDENTIFIER EQUAL expr SEMICOLON { Let ($3, $5, true) }
   | IDENTIFIER EQUAL expr SEMICOLON { Assign ($1, $3) }
   | IF expr block opt_else { If ($2, $3, $4) }
   | LOOP block { Loop ($2) }
   | BREAK SEMICOLON { Break }
-  | expr { Expr $1 }
-  | expr SEMICOLON { print_endline "Parsed expression statement"; Expr $1 }
-  | block { print_endline "Parsed block statement"; ExprBlock $1 }
+  | expr SEMICOLON { (*print_endline "Parsed expression statement";*) Expr $1 }
+  | expr %prec UMINUS { Expr $1 }
+  | block { (*print_endline "Parsed block statement";*) ExprBlock $1 }
   | error { failwith "Syntax error in statement" }  (* Abort on error *)
-
 
 opt_else:
   | ELSE block { Some $2 }
@@ -103,7 +99,7 @@ expr:
   }
   | BANG expr { UnaryOp ("!", $2) }
   | MINUS expr %prec UMINUS { UnaryOp ("-", $2) }
-  | REF expr %prec REF { UnaryOp ("&", $2) }
+  | AMP expr %prec REF { UnaryOp ("&", $2) }
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }
   | IDENTIFIER { Var $1 }
@@ -127,7 +123,7 @@ expr:
   | expr MINUSEQ expr { BinaryOp ("-=", $1, $3) }
   | expr MULTEQ expr { BinaryOp ("*=", $1, $3) }
   | expr DIVEQ expr { BinaryOp ("/=", $1, $3) }
-  | expr MODEQ expr { BinaryOp ("%=", $1, $3) }
+  | expr MODEQ expr { BinaryOp ("%%=", $1, $3) }
   | expr ANDEQ expr { BinaryOp ("&=", $1, $3) }
   | expr OREQ expr { BinaryOp ("|=", $1, $3) }
   | expr XOREQ expr { BinaryOp ("^=", $1, $3) }
