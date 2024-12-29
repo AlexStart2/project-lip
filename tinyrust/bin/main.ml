@@ -14,16 +14,17 @@ let parse input =
 
 let () =
   let input = {|
-fn foo(x: i32) -> i32 { // dichiarazione di funzione
-    let mut y = 4; // ambiente locale
-    y = y + x;
-    y + x // valore di ritorno
+
+fn presta(y: &String) {
+    println!("il parametro prestato: {y}");
 }
 fn main() {
-    let x = 3;
-    let y = foo(x); // chiamata di funzione
-    println!("{y}"); // output: 10
+    let x = String::from("Ciao");
+    presta(&x); // reference (immutabile) a x
+    println!("il parametro x: {x}");
 }
+
+
   |} in
   let ast = parse input in
   let _ = exec_program ast in ()

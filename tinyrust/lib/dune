@@ -5,7 +5,7 @@
  (libraries menhirLib str))
 
 (menhir
- (modules parser))
- ; (flags --explain --trace))
+ (modules parser)
+ (flags --explain --trace))
 
 (ocamllex lexer)

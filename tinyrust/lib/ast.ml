@@ -1,6 +1,15 @@
 (* Tokens are already defined in lexer.mll and parser.mly *)
 type identifier = string
 
+type varType =
+  | Mutable
+  | Immutable
+  | Reference
+  | Function
+  | Unit
+  | Immediate
+
+
 (* Expressions *)
 type expr =
   | Int of int
@@ -31,25 +40,23 @@ and block = stmt list                 (* { stmt1; stmt2; ... } *)
 
 and func = {
   name : identifier;
-  params : (identifier * string) list; (* List of parameter names with types *)
+  params : (identifier * identifier) list; (* List of parameter names with types *)
   body : block;
   return_type : string option; (* Optional return type *)
 }
 
+and var =
+  | IntVal of int * varType
+  | StringVal of string * varType
+  | ArrayVal of var list * varType
+  | RefVal of var * varType
+  | UnitVal of varType
+  | FuncVal of func * varType
+  
+
+
+
 (* Program *)
 type program = Program of stmt list
 
-
-type value =
-  | IntVal of int
-  | StringVal of string
-  | ArrayVal of value list
-  | RefVal of value
-  | UnitVal
-  | FuncVal of func
-
-type variable =
-  | Immutable of value
-  | Mutable of value ref
-
-type env = (string, variable) Hashtbl.t list
+type env = (string, var) Hashtbl.t list

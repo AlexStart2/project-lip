@@ -51,8 +51,18 @@ params:
   | /* empty */ { [] }
 
 non_empty_params:
+  | IDENTIFIER COLON REF IDENTIFIER COMMA non_empty_params { ($1, $4) :: $6 }
+  | IDENTIFIER COLON REF IDENTIFIER { [($1, $4)] }
   | IDENTIFIER COLON IDENTIFIER COMMA non_empty_params { ($1, $3) :: $5 }
   | IDENTIFIER COLON IDENTIFIER { [($1, $3)] }
+
+
+// params:
+//   | IDENTIFIER { [($1, false)] }
+//   | REF IDENTIFIER { [($2, true)] }
+//   | params COMMA IDENTIFIER { $1 @ [($3, false)] }
+//   | params COMMA REF IDENTIFIER { $1 @ [($3, true)] }
+
 
 block:
   | LBRACE stmts RBRACE { $2 }
