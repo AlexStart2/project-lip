@@ -12,7 +12,6 @@ open Ast
 %token LBRACKET RBRACKET ANDEQ OREQ XOREQ LSHIFTEQ MODEQ PLUSEQ MINUSEQ MULTEQ DIVEQ
 %token LSHIFT RSHIFT RSHIFTEQ MUT IF ELSE LOOP BREAK ARROW COLON REF
 
-
 %nonassoc DOT                 (* Highest precedence for method calls and property access *)
 %left OROR                    (* Logical OR *)
 %left ANDAND                  (* Logical AND *)
@@ -27,10 +26,6 @@ open Ast
 %nonassoc BANG
 %right PLUSEQ MINUSEQ MULTEQ DIVEQ MODEQ ANDEQ OREQ XOREQ LSHIFTEQ RSHIFTEQ
 
-
-%type <(string * string) list> params
-%type <(string * string) list> non_empty_params
-
 %type <Ast.program> program
 %type <Ast.block> block
 %type <Ast.stmt list> stmts
@@ -38,81 +33,82 @@ open Ast
 %type <Ast.expr> expr
 %type <Ast.expr list> expr_list
 %type <Ast.block option> opt_else
+%type <Ast.param list> params
+// %type <Ast.param_type> param_type
 
 %start program
 
 %%
 
+(* Entry point for the program *)
 program:
-  | stmts EOF { (*print_endline "Parsed program";*)Program $1 }
+  | stmts EOF { Program $1 }
 
+(* Function parameters *)
 params:
-  | non_empty_params { $1 }
+  | IDENTIFIER COLON AMP IDENTIFIER COMMA params { RefParam ($1, $4) :: $6 }
+  | IDENTIFIER COLON AMP IDENTIFIER { [RefParam ($1, $4)] }
+  | IDENTIFIER COLON IDENTIFIER COMMA params { SimpleParam ($1, $3) :: $5 }
+  | IDENTIFIER COLON IDENTIFIER { [SimpleParam ($1, $3)] }
   | /* empty */ { [] }
 
-non_empty_params:
-  | IDENTIFIER COLON REF IDENTIFIER COMMA non_empty_params { ($1, $4) :: $6 }
-  | IDENTIFIER COLON REF IDENTIFIER { [($1, $4)] }
-  | IDENTIFIER COLON IDENTIFIER COMMA non_empty_params { ($1, $3) :: $5 }
-  | IDENTIFIER COLON IDENTIFIER { [($1, $3)] }
 
-
-// params:
-//   | IDENTIFIER { [($1, false)] }
-//   | REF IDENTIFIER { [($2, true)] }
-//   | params COMMA IDENTIFIER { $1 @ [($3, false)] }
-//   | params COMMA REF IDENTIFIER { $1 @ [($3, true)] }
-
-
+(* Block: sequence of statements or trailing expression *)
 block:
   | LBRACE stmts RBRACE { $2 }
   | LBRACE RBRACE { [] }
-
+  | LBRACE stmts RBRACE SEMICOLON { $2 }
 stmts:
-  | stmt { [$1] }
   | stmt stmts { $1 :: $2 }
+  | expr { [Expr $1] }
+  | stmt { [$1] }
+
 
 stmt:
   | LET IDENTIFIER EQUAL expr SEMICOLON { Let ($2, $4, false) }
-  | FN IDENTIFIER LPAREN params RPAREN block {
-      (*print_endline ("Parsed function: " ^ $2);*)FunctionDef { name = $2; params = $4; body = $6; return_type = None }
-  }
-  | FN IDENTIFIER LPAREN params RPAREN ARROW IDENTIFIER block {
-      (*print_endline ("Parsed function with return type: " ^ $2);*)FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
-  }
   | LET MUT IDENTIFIER EQUAL expr SEMICOLON { Let ($3, $5, true) }
   | IDENTIFIER EQUAL expr SEMICOLON { Assign ($1, $3) }
   | IF expr block opt_else { If ($2, $3, $4) }
   | LOOP block { Loop ($2) }
   | BREAK SEMICOLON { Break }
-  | expr SEMICOLON { (*print_endline "Parsed expression statement";*) Expr $1 }
-  | expr %prec UMINUS { Expr $1 }
-  | block { (*print_endline "Parsed block statement";*) ExprBlock $1 }
-  | error { failwith "Syntax error in statement" }  (* Abort on error *)
+  | FN IDENTIFIER LPAREN params RPAREN block {
+      FunctionDef { name = $2; params = $4; body = $6; return_type = None }
+  }
+  | FN IDENTIFIER LPAREN params RPAREN ARROW IDENTIFIER block {
+      FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
+  }
+  | expr SEMICOLON { Expr $1 }
+  | block { ExprBlock $1 }
+  | error { failwith "Syntax error in statement" }
 
+(* Optional else block *)
 opt_else:
   | ELSE block { Some $2 }
   | /* empty */ { None }
 
+(* Expression lists *)
 expr_list:
   | expr COMMA expr_list { $1 :: $3 }
   | expr { [$1] }
   | /* empty */ { [] }
 
+(* Expressions *)
 expr:
   | IDENTIFIER LPAREN expr_list RPAREN { FunctionCall ($1, $3) }
   | IDENTIFIER DOUBLECOLON IDENTIFIER LPAREN expr_list RPAREN {
-    NamespaceCall ($1, $3, $5)  (* Handle String::from *)
-  }
+      NamespaceCall ($1, $3, $5)
+    }
   | expr DOT IDENTIFIER LPAREN expr_list RPAREN {
-      MethodCall ($1, $3, $5)  (* Handle a.push_str(...) *)
-  }
+      MethodCall ($1, $3, $5)
+    }
   | BANG expr { UnaryOp ("!", $2) }
   | MINUS expr %prec UMINUS { UnaryOp ("-", $2) }
   | AMP expr %prec REF { UnaryOp ("&", $2) }
+  | AMP MUT expr %prec REF { UnaryOp ("&mut", $3) }
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }
   | IDENTIFIER { Var $1 }
+  // | LBRACE expr_list RBRACE { $2 } // here is the problem
   | expr PLUS expr { BinaryOp ("+", $1, $3) }
   | expr MINUS expr { BinaryOp ("-", $1, $3) }
   | expr STAR expr { BinaryOp ("*", $1, $3) }
@@ -133,7 +129,7 @@ expr:
   | expr MINUSEQ expr { BinaryOp ("-=", $1, $3) }
   | expr MULTEQ expr { BinaryOp ("*=", $1, $3) }
   | expr DIVEQ expr { BinaryOp ("/=", $1, $3) }
-  | expr MODEQ expr { BinaryOp ("%%=", $1, $3) }
+  | expr MODEQ expr { BinaryOp ("%=", $1, $3) }
   | expr ANDEQ expr { BinaryOp ("&=", $1, $3) }
   | expr OREQ expr { BinaryOp ("|=", $1, $3) }
   | expr XOREQ expr { BinaryOp ("^=", $1, $3) }
