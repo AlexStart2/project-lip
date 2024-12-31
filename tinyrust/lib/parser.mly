@@ -55,9 +55,11 @@ params:
 
 (* Block: sequence of statements or trailing expression *)
 block:
+  | LBRACE stmts RBRACE SEMICOLON { $2 }
   | LBRACE stmts RBRACE { $2 }
   | LBRACE RBRACE { [] }
-  | LBRACE stmts RBRACE SEMICOLON { $2 }
+
+
 stmts:
   | stmt stmts { $1 :: $2 }
   | expr { [Expr $1] }
@@ -78,7 +80,7 @@ stmt:
       FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
   }
   | expr SEMICOLON { Expr $1 }
-  | block { ExprBlock $1 }
+  | expr { Expr $1 }
   | error { failwith "Syntax error in statement" }
 
 (* Optional else block *)
@@ -108,7 +110,7 @@ expr:
   | INT_LITERAL { Int $1 }
   | STRING_LITERAL { String $1 }
   | IDENTIFIER { Var $1 }
-  // | LBRACE expr_list RBRACE { $2 } // here is the problem
+  | LBRACE stmts RBRACE { BlockExpr $2 }
   | expr PLUS expr { BinaryOp ("+", $1, $3) }
   | expr MINUS expr { BinaryOp ("-", $1, $3) }
   | expr STAR expr { BinaryOp ("*", $1, $3) }

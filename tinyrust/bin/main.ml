@@ -15,10 +15,13 @@ let parse input =
 let () =
   let input = {|
 fn main() {
-  let mut x = String::from("Hello, world!");
-  x.push_str(" Goodbye!");
-  println!("{x}");
+  let mut y = 4;
+  fn scopecheck () {
+      y = 6; // errore 
   }
+  y = 3+y;
+}
+
   |} in
   let ast = parse input in
   let _ = exec_program ast in ()

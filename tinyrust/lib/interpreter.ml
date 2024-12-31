@@ -9,11 +9,12 @@ let built_in_functions = Hashtbl.create 16
 
 let type_of = function
   | Some IntVal _ -> "i32"
-  | Some StringVal _ -> "String"
+  | Some StringVal _ -> "StringVal"
   | Some ArrayVal _ -> "array"
   | Some RefVal _ -> "ref"
   | Some UnitVal -> "unit"
   | Some FuncVal _ -> "function"
+  | Some StringR _ -> "StringR"
   | None -> failwith "Unknown type"
 
 let rec print_env env = 
@@ -47,34 +48,11 @@ let print_func_details func =
 let rec val_to_string (v:var) var_name = match v with
 | IntVal n -> string_of_int n
 | StringVal s -> s
+| StringR s -> s
 | ArrayVal _ -> failwith "Not implemented"
 | RefVal r -> val_to_string r var_name
 | UnitVal -> failwith ("Variable " ^ var_name ^ " is a unit value")
 | FuncVal _ -> failwith (var_name ^ " is a function")
-
-
-(* Initialize built-in functions *)
-
-
-let initialize_builtins _ = 
-  Hashtbl.add built_in_functions "println!" (fun args env ->
-      match args with
-      | [StringVal value] -> 
-        (* print_env env; *)
-          let interpolated = 
-            Str.global_substitute (Str.regexp "{[a-zA-Z_][a-zA-Z0-9_]*}")
-              (fun matched ->
-                let var_name = String.sub (Str.matched_string matched) 1 
-                               (String.length (Str.matched_string matched) - 2) in
-                let v = fst (find_in_env env var_name) in
-                (val_to_string v var_name)
-              ) 
-              value
-          in
-          print_endline interpolated; 
-          UnitVal
-      | _ -> failwith "println! expects a single string argument"
-    )
 
 
 
@@ -112,15 +90,10 @@ let find_function_in_env env name =
   try
     let x = find_in_env env name in
       match x with
-      | (f, Function _) -> Some f
+      | (f, Function) -> Some f
       | _ -> None
   with 
   | Failure _ -> None
-
-let find_function_in_build_in name args env =
-  match Hashtbl.find_opt built_in_functions name with
-  | Some f -> Some (f args env)
-  | None -> None
 
 
 let eval_unary_op op v =
@@ -173,7 +146,7 @@ let eval_binary_op op lhs rhs =
       match (namespace, func_name) with
       | ("String", "from") -> (
           match eval_args with
-          | [StringVal s] -> StringVal s
+          | [StringVal s] -> StringR s
           | _ -> failwith "String::from expects a single string argument"
         )
       | _ -> failwith ("Undefined function: " ^ namespace ^ "::" ^ func_name)
@@ -184,7 +157,7 @@ let eval_binary_op op lhs rhs =
       match find_function_in_env env name with
       | Some (FuncVal func) -> ( call_function env func eval_args)
       | None -> (
-          match find_function_in_build_in name eval_args env with
+          match find_function_in_build_in name args env with
           | Some f -> f
           | None -> failwith ("Undefined function: " ^ name)
         )
@@ -194,7 +167,7 @@ let eval_binary_op op lhs rhs =
       match obj with
         | Var name -> let v = find_in_env env name in
           (match v with
-            | (StringVal string, Mutable) -> (
+            | (StringR string, Mutable) -> (
               let eval_args = List.map (eval_expr env) args in
                 match method_name with
                 | "push_str" -> (
@@ -203,8 +176,8 @@ let eval_binary_op op lhs rhs =
                   | _ -> failwith "push_str expects a single string argument")
                 | _ -> failwith ("Undefined method: " ^ method_name)
               )
-              | (StringVal _, Immutable) -> failwith "Cannot call method push_str on immutable strings"
-              | _ -> failwith "Method call must be called on a variable of type string"
+              | (StringR _, Immutable) -> failwith "Cannot call method push_str on immutable strings"
+              | _ -> failwith "Method call must be called on a variable of type opject string"
             )
         | _ -> failwith "Method call must be called on a variable"
         )
@@ -215,16 +188,58 @@ let eval_binary_op op lhs rhs =
     | UnaryOp (op, operand) ->
         let o_val = eval_expr env operand in
         eval_unary_op op o_val
+    | BlockExpr block -> exec_block env block
+
+and find_function_in_build_in name args env =
+  match Hashtbl.find_opt built_in_functions name with
+  | Some f -> Some (f args env)
+  | None -> None
+
+
+(* Initialize built-in functions *)
+and initialize_builtins _ = 
+  Hashtbl.add built_in_functions "println!" (fun args env ->
+    let eval_args = List.map (eval_expr env) args in
+      match eval_args with
+      | [StringVal value] -> 
+          let interpolated = 
+            Str.global_substitute (Str.regexp "{[a-zA-Z_][a-zA-Z0-9_]*}")
+              (fun matched ->
+                let var_name = String.sub (Str.matched_string matched) 1 
+                               (String.length (Str.matched_string matched) - 2) in
+                let v = find_in_env env var_name in
+                match v with
+                | (_, Borrowed) -> failwith ("borrow of moved value " ^ var_name)
+                | (_, _ ) -> (val_to_string (fst (v)) var_name)
+              ) 
+              value
+          in
+          print_endline interpolated; 
+          UnitVal
+      | _ -> failwith "println! expects a single string argument"
+    )
 
 and exec_stmt (env : env) (stmt : stmt) : var option =
   match stmt with
   | Let (name, expr, is_mutable) ->
     let value = eval_expr env expr in
+    (match value with
+    | StringR _ -> ( match expr with 
+      | Var n -> let (var, _) = find_in_env env n in add_to_env env n (var, Borrowed) false
+      | _ -> ())
+    | _ -> ()
+    );
     (match is_mutable with
     | true -> add_to_env env name (value, Mutable) true; None
     | false -> add_to_env env name (value, Immutable) true; None)
   | Assign (name, expr) ->
     let value = eval_expr env expr in
+    (match value with
+    | StringR _ -> ( match expr with 
+      | Var n -> let (var, _) = find_in_env env n in add_to_env env n (var, Borrowed) false
+      | _ -> ())
+    | _ -> ()
+    );
     let (var, var_type) = find_in_env env name in
     (match var_type with
     | Mutable ->  if (type_of (Some value)) = (type_of (Some(var))) 
@@ -233,7 +248,8 @@ and exec_stmt (env : env) (stmt : stmt) : var option =
     |  Immutable -> failwith ("Cannot assign to immutable variable " ^ name)
     |  Reference -> failwith ("Cannot assign to reference variable " ^ name)
     |  Unit -> failwith ("Cannot assign to unit variable " ^ name)
-    |  Function _ -> failwith ("Cannot assign to function variable " ^ name))
+    |  Function -> failwith ("Cannot assign to function variable " ^ name)
+    |  Borrowed -> failwith ("Cannot assign to borrowed variable " ^ name))
     
   | Expr expr -> Some(eval_expr env expr)
   | If (cond, then_block, else_block) ->
@@ -250,8 +266,7 @@ and exec_stmt (env : env) (stmt : stmt) : var option =
         while true do ignore(exec_block env block) done
       with BreakException -> (); None
   )
-  | ExprBlock block -> Some(exec_block env block)
-  | FunctionDef func -> add_to_env env func.name (FuncVal func, Function None) true; None
+  | FunctionDef func -> add_to_env env func.name (FuncVal func, Function) true; None
   | ErrorStmt -> failwith "Error statement"
 
 and call_function (env:env) func (arg_vals:var list) : var =
@@ -302,5 +317,5 @@ let exec_program (Program stmts : program) : var =
   List.iter (fun stmt -> ignore (exec_stmt env stmt)) stmts;
   (* Find and execute the main function *)
   match find_in_env env "main" with
-  | (FuncVal main, Function _) -> call_function env main []
+  | (FuncVal main, Function) -> call_function env main []
   | _ -> failwith "main function not defined or invalid"

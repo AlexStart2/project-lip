@@ -1,5 +1,6 @@
 open TinyrustLib.Lexer
 open TinyrustLib.Parser
+open TinyrustLib.Interpreter
 
 (**
   The absolute path of the examples directory in your file system.
@@ -43,8 +44,9 @@ Array.iter
   (fun ex ->
     let p = read_file ex in
     try
-      let _ = parse p in
-      pr "✔ Parse %s\n" ex
+      let z = parse p in
+      pr "✔ Parse %s\n" ex;
+      let _ = exec_program z in ()
     with Failure msg ->
       pr "✘ Couldn't parse %s: %s\n" ex msg
     | _ ->

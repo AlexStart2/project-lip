@@ -6,7 +6,8 @@ type var_type =
   | Immutable
   | Reference
   | Unit
-  | Function of string option  (* Optional return type *)
+  | Function
+  | Borrowed
 
 type param =
   | RefParam of identifier * string (* Reference parameter with type *)
@@ -23,21 +24,22 @@ type expr =
   | BinaryOp of string * expr * expr         (* Binary operators, e.g., x + y *)
   | UnaryOp of string * expr                 (* Unary operators, e.g., -x *)
   | Array of expr list                       (* Array literals *)
+  | BlockExpr of stmt list                   (* Block as an expression *)
 
 (* Statements *)
-type stmt =
+and stmt =
   | Let of identifier * expr * bool          (* Let binding, with mutability flag *)
   | Assign of identifier * expr              (* Assignment, e.g., x = y *)
   | If of expr * block * block option        (* If statement with optional else *)
   | Loop of block                            (* Infinite loop *)
   | Break                                    (* Break statement *)
   | Expr of expr                             (* Standalone expression as a statement *)
-  | ExprBlock of block                       (* Block treated as an expression *)
+  (* | ExprBlock of block                       Block as an expression *)
   | FunctionDef of func                      (* Function definition *)
   | ErrorStmt                                (* Error placeholder *)
 
 (* Block: A sequence of statements *)
-and block = stmt list
+and block = stmt list 
 
 (* Function Definition *)
 and func = {
@@ -51,6 +53,7 @@ and func = {
 and var =
   | IntVal of int
   | StringVal of string
+  | StringR of string
   | ArrayVal of var list
   | RefVal of var
   | UnitVal
