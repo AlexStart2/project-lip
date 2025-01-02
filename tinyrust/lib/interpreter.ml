@@ -17,6 +17,16 @@ let type_of = function
   | Some StringR _ -> "StringR"
   | None -> failwith "Unknown type"
 
+let var_type_to_string = function
+  | Mutable -> "mutable"
+  | Immutable -> "immutable"
+  | Reference -> "reference"
+  | Function -> "function"
+  | Borrowed -> "borrowed"
+  | Unit -> "unit"
+
+(* Print the environment stack *)
+
 let rec print_env env = 
   match env with
   | [] -> ()
@@ -50,7 +60,7 @@ let rec val_to_string (v:var) var_name = match v with
 | StringVal s -> s
 | StringR s -> s
 | ArrayVal _ -> failwith "Not implemented"
-| RefVal r -> val_to_string r var_name
+| RefVal r -> val_to_string (fst(!r)) var_name
 | UnitVal -> failwith ("Variable " ^ var_name ^ " is a unit value")
 | FuncVal _ -> failwith (var_name ^ " is a function")
 
@@ -95,16 +105,12 @@ let find_function_in_env env name =
   with 
   | Failure _ -> None
 
+let rec find_ref_val var =
+  match var with
+  | (RefVal r, _) -> find_ref_val !r
+  | _ -> ref var
 
-let eval_unary_op op v =
-  (* let v = eval_expr env e in *)
-  match (op, v) with
-  | ("!", IntVal n) -> IntVal (if n = 0 then 1 else 0)
-  | ("-", IntVal n) -> IntVal (-n)
-  | ("&", v) -> RefVal v;
-  | ("&mut", v) -> RefVal v;
-  | _ -> failwith ("Unsupported unary operation: " ^ op)
-
+(* Evaluate a binary operation *)
 let eval_binary_op op lhs rhs =
   match (op, lhs, rhs) with
   | ("+", IntVal l, IntVal r) -> IntVal (l + r)
@@ -167,6 +173,21 @@ let eval_binary_op op lhs rhs =
       match obj with
         | Var name -> let v = find_in_env env name in
           (match v with
+            | (RefVal r, _) -> (
+              let target = find_ref_val !r in
+              match !target with
+              | (StringR string, Mutable) -> (
+                let eval_args = List.map (eval_expr env) args in
+                match method_name with
+                | "push_str" -> (
+                  match eval_args with
+                  | [StringVal suffix] -> target := (StringR (string ^ suffix), Mutable); UnitVal
+                  | _ -> failwith "push_str expects a single string argument")
+                | _ -> failwith ("Undefined method: " ^ method_name)
+              )
+              | (StringR _, Immutable) -> failwith "Cannot call method push_str on immutable strings"
+              | _ -> failwith "Method call must be called on a variable of type object string"
+            )
             | (StringR string, Mutable) -> (
               let eval_args = List.map (eval_expr env) args in
                 match method_name with
@@ -177,7 +198,7 @@ let eval_binary_op op lhs rhs =
                 | _ -> failwith ("Undefined method: " ^ method_name)
               )
               | (StringR _, Immutable) -> failwith "Cannot call method push_str on immutable strings"
-              | _ -> failwith "Method call must be called on a variable of type opject string"
+              | _ -> failwith "Method call must be called on a variable of type object string here2"
             )
         | _ -> failwith "Method call must be called on a variable"
         )
@@ -186,9 +207,24 @@ let eval_binary_op op lhs rhs =
         let rval = eval_expr env rhs in
         eval_binary_op op lval rval
     | UnaryOp (op, operand) ->
-        let o_val = eval_expr env operand in
-        eval_unary_op op o_val
+        eval_unary_op op env operand
     | BlockExpr block -> exec_block env block
+
+and eval_unary_op op env expr =
+  let v = eval_expr env expr in
+  match (op, v) with
+  | ("!", IntVal n) -> IntVal (if n = 0 then 1 else 0)
+  | ("-", IntVal n) -> IntVal (-n)
+  | ("&", _) -> (match expr with 
+    | Var n -> let var = find_in_env env n in RefVal (ref var)
+      | _ -> failwith "Expected a variable");
+  | ("&mut", _) -> (match expr with 
+    | Var n -> let var = find_in_env env n in
+      (match (snd(var)) with
+      | Mutable -> RefVal (ref var)
+      | _ -> failwith "Expected a mutable variable")
+    | _ -> failwith "Expected a variable")
+  | _ -> failwith ("Unsupported unary operation: " ^ op)
 
 and find_function_in_build_in name args env =
   match Hashtbl.find_opt built_in_functions name with
@@ -223,15 +259,22 @@ and exec_stmt (env : env) (stmt : stmt) : var option =
   match stmt with
   | Let (name, expr, is_mutable) ->
     let value = eval_expr env expr in
+    let check = 
     (match value with
     | StringR _ -> ( match expr with 
-      | Var n -> let (var, _) = find_in_env env n in add_to_env env n (var, Borrowed) false
-      | _ -> ())
-    | _ -> ()
-    );
+      | Var n -> let (var, _) = find_in_env env n in add_to_env env n (var, Borrowed) false; true
+      | _ -> false)
+    | RefVal _ -> ( match expr with 
+      | Var n -> let var = find_in_env env n in if is_mutable then add_to_env env n (RefVal(ref(var)), Mutable) true else
+        add_to_env env n (RefVal(ref(var)), Immutable) true; true
+      | _ -> false)
+    | _ -> false
+    ) in
+    if check then None else
     (match is_mutable with
     | true -> add_to_env env name (value, Mutable) true; None
     | false -> add_to_env env name (value, Immutable) true; None)
+
   | Assign (name, expr) ->
     let value = eval_expr env expr in
     (match value with
@@ -244,13 +287,12 @@ and exec_stmt (env : env) (stmt : stmt) : var option =
     (match var_type with
     | Mutable ->  if (type_of (Some value)) = (type_of (Some(var))) 
       then add_to_env env name (value, Mutable) false
-    else failwith "Type mismatch"; Some value
+    else failwith "Type mismatch"; None
     |  Immutable -> failwith ("Cannot assign to immutable variable " ^ name)
     |  Reference -> failwith ("Cannot assign to reference variable " ^ name)
     |  Unit -> failwith ("Cannot assign to unit variable " ^ name)
     |  Function -> failwith ("Cannot assign to function variable " ^ name)
     |  Borrowed -> failwith ("Cannot assign to borrowed variable " ^ name))
-    
   | Expr expr -> Some(eval_expr env expr)
   | If (cond, then_block, else_block) ->
       (match eval_expr env cond with

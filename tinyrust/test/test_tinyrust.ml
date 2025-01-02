@@ -43,12 +43,22 @@ let%test_unit "test_parser" =
 Array.iter
   (fun ex ->
     let p = read_file ex in
+    Printf.printf "/******************************************************************************/\n";
     try
-      let z = parse p in
+      let _ = parse p in
       pr "✔ Parse %s\n" ex;
-      let _ = exec_program z in ()
+      try
+        let ast = parse p in
+        let _ = exec_program ast in
+        pr "✔ Exec\n"
+      with Failure msg ->
+        pr "✘ Couldn't execute: %s\n" msg
+      | _ ->
+        pr "✘ Couldn't execute: Unknown error\n"
     with Failure msg ->
       pr "✘ Couldn't parse %s: %s\n" ex msg
     | _ ->
-      pr "✘ Couldn't parse %s: Unknown error\n" ex)
+      pr "✘ Couldn't parse %s: Unknown error\n" ex;
+      Printf.printf "/******************************************************************************/\n";
+      )
   examples

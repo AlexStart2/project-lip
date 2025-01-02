@@ -15,12 +15,13 @@ let parse input =
 let () =
   let input = {|
 fn main() {
-  let mut y = 4;
-  fn scopecheck () {
-      y = 6; // errore 
-  }
-  y = 3+y;
+    let mut x = String::from("Ciao");
+    let y = &mut x; // borrow di x a y (mutabile)
+    x.push_str(", mondo");
+    println!("{y}"); // output: Ciao, mondo
+    println!("{x}"); // output: Ciao, mondo
 }
+
 
   |} in
   let ast = parse input in

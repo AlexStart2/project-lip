@@ -55,13 +55,15 @@ and var =
   | StringVal of string
   | StringR of string
   | ArrayVal of var list
-  | RefVal of var
+  | RefVal of variable ref
   | UnitVal
   | FuncVal of func
+
+and variable = var * var_type
 
 (* Program: Entry point *)
 type program = Program of stmt list
 
-type variable = var * var_type
+
 (* Environment: A stack of scopes *)
 type env = (identifier, var) Hashtbl.t list

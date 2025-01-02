@@ -138,3 +138,4 @@ expr:
   | expr LSHIFTEQ expr { BinaryOp ("<<=", $1, $3) }
   | expr RSHIFTEQ expr { BinaryOp (">>=", $1, $3) }
   | LBRACKET expr_list RBRACKET { Array $2 }
+  // empty expression
