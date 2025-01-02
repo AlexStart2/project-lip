@@ -62,7 +62,6 @@ block:
 
 stmts:
   | stmt stmts { $1 :: $2 }
-  | expr { [Expr $1] }
   | stmt { [$1] }
 
 
@@ -80,7 +79,7 @@ stmt:
       FunctionDef { name = $2; params = $4; body = $8; return_type = Some $7 }
   }
   | expr SEMICOLON { Expr $1 }
-  | expr { Expr $1 }
+  | expr { Expr $1 } %prec PLUSEQ
   | error { failwith "Syntax error in statement" }
 
 (* Optional else block *)
@@ -138,4 +137,4 @@ expr:
   | expr LSHIFTEQ expr { BinaryOp ("<<=", $1, $3) }
   | expr RSHIFTEQ expr { BinaryOp (">>=", $1, $3) }
   | LBRACKET expr_list RBRACKET { Array $2 }
-  // empty expression
+
